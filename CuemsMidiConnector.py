@@ -12,7 +12,7 @@ import time
 class CuemsMidiConnector:
     def __init__(self):
             self.seq = alsaseq.Sequencer(clientname='PyASeqKeeper')
-            
+            self.master = self.iam_master()
             self.keep_going = True
             input_id = self.seq.create_simple_port(
             name='input', 
@@ -33,6 +33,12 @@ class CuemsMidiConnector:
     #    time.sleep(2)  # wait for connection to establish before processing
         self.process_connections(client_id)
 
+
+    def port_unsusubscribed(self, data):
+        client_id = data.get('connect.sender.client')
+        self.process_connections(client_id)
+        client_id = data.get('connect.dest.client')
+        self.process_connections(client_id)
 
     def list_clients(self):
         print('List of clients on startup:')
@@ -66,6 +72,15 @@ class CuemsMidiConnector:
             # do MtcMaster specific stuff
             MtcMasterConnection.connect_to_through_port(self.seq, client_id)
 
+        if "rtpmidid" in client_name:
+            print(f"Processing rtpmidid connections for : {client_name}")
+            # do rtpmidid specific stuff
+            if self.master:
+                RtpMidiConnection_Master.connect_from_through_port(self.seq, client_id)
+            else:
+                RtpMidiConnection_Slave.connect_to_through_port(self.seq, client_id)
+        
+
 
     def run(self):
         self.active = True
@@ -94,6 +109,7 @@ class CuemsMidiConnector:
                     elif event.type == alsaseq.SEQ_EVENT_PORT_UNSUBSCRIBED:
                         #self.graph.conn_destroyed(data)
                         print(f'port unsubscribed{data}')
+                        self.port_unsusubscribed(data)
                     elif event.type in [alsaseq.SEQ_EVENT_NOTEON, alsaseq.SEQ_EVENT_NOTEOFF, 
                                         alsaseq.SEQ_EVENT_CONTROLLER, alsaseq.SEQ_EVENT_PGMCHANGE,
                                         ]:
@@ -116,6 +132,9 @@ class CuemsMidiConnector:
         del self.seq
         self.stopped.emit()
 
+
+    def iam_master(self):
+        return True
 
 
 
@@ -156,11 +175,33 @@ class MtcMasterConnection():
         except Exception as e:
             print(f"Error connecting to through port: {e}")
             return False
+        
+class RtpMidiConnection_Master():
+
+    @staticmethod
+    def connect_from_through_port(seq, client_id):
+        through_port_id = 14
+        through_port_port_id = 0
+        through_port = (through_port_id, through_port_port_id)
+
+        port_info = seq.get_port_info(0, client_id)
+
+        client_port = (client_id, 0)
+        print(f"connecting to through port: {port_info}")
+        try:
+            seq.connect_ports(through_port, client_port)
+        except Exception as e:
+            print(f"Error connecting to through port: {e}")
+            return False
+
+
+class RtpMidiConnection_Slave():
+    pass
 
 class VideoConecction(PlayerConecction):
     pass
 
 if __name__ == '__main__':
 
-    keeper = PyASeqKeeper()
+    keeper = CuemsMidiConnector()
     keeper.run()

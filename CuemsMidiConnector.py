@@ -7,24 +7,25 @@ import time
 from cuemsutils.log import logged, Logger
 
 
+CUEMS_CONTROLLER_LOCK_FILE = 'master.lock'
+CUEMS_CONF_PATH = '/etc/cuems/'
 
+NETWORK_PORT_NAME = 'Midi Through-Midi Through Port-0'
 
 
 class CuemsMidiConnector:
     def __init__(self):
-            self.seq = alsaseq.Sequencer(clientname='PyASeqKeeper')
-            self.master = self.iam_master()
+            self.seq = alsaseq.Sequencer(clientname='CuemsMidiConnector')
+            self.controller = False
+            #self.controller= self.check_amicontroller()
             self.keep_going = True
+            self.connector = GenericConnection()
             input_id = self.seq.create_simple_port(
-            name='input', 
-            type=alsaseq.SEQ_PORT_TYPE_MIDI_GENERIC|alsaseq.SEQ_PORT_TYPE_APPLICATION, 
-            caps=alsaseq.SEQ_PORT_CAP_WRITE|alsaseq.SEQ_PORT_CAP_SUBS_WRITE|
-            alsaseq.SEQ_PORT_CAP_SYNC_WRITE)
-            output_id = self.seq.create_simple_port(name='output', 
-                                                type=alsaseq.SEQ_PORT_TYPE_MIDI_GENERIC|alsaseq.SEQ_PORT_TYPE_APPLICATION, 
-                                                caps=alsaseq.SEQ_PORT_CAP_READ|alsaseq.SEQ_PORT_CAP_SUBS_READ|
-                                                alsaseq.SEQ_PORT_CAP_SYNC_READ)
-            
+                name='input', 
+                type=alsaseq.SEQ_PORT_TYPE_MIDI_GENERIC|alsaseq.SEQ_PORT_TYPE_APPLICATION, 
+                caps=alsaseq.SEQ_PORT_CAP_WRITE|alsaseq.SEQ_PORT_CAP_SUBS_WRITE|
+                alsaseq.SEQ_PORT_CAP_SYNC_WRITE)
+
             self.seq.connect_ports((alsaseq.SEQ_CLIENT_SYSTEM, alsaseq.SEQ_PORT_SYSTEM_ANNOUNCE), (self.seq.client_id, input_id))
             self.id = self.seq.client_id
 
@@ -55,32 +56,35 @@ class CuemsMidiConnector:
             #     read, write = connections
             #     print(f"connections:  read: {read}, write: {write}")
         print("----startup processing complete.---")
-
-
+    
     def process_connections(self,client_id):
+
         client_info =self.seq.get_client_info(client_id)
         client_name = client_info.get('name')
         Logger.debug(f"processing conections for : {client_name}")
 
 
-        if "xjadeo" in client_name:
+        if ("xjadeo" or "audioplayer" or "dmxplayer") in client_name:
             Logger.debug(f"Processing xjadeo connections for : {client_name}")
             # do xjadeo specific stuff
-            PlayerConecction.connect_from_through_port(self.seq, client_id)
+            self.connector.connect_from_through_port(self.seq, client_id)
 
         if "MtcMaster" in client_name:
             Logger.debug(f"Processing MtcMaster connections for : {client_name}")
             # do MtcMaster specific stuff
-            MtcMasterConnection.connect_to_through_port(self.seq, client_id)
+            self.connector.connect_to_through_port(self.seq, client_id)
 
         if "rtpmidid" in client_name:
-            print(f"Processing rtpmidid connections for : {client_name}")
+            if self.controller:
                 Logger.debug(f"Processing Master rtpmidid connections for : {client_name}")
-            if self.master:
-                RtpMidiConnection_Master.connect_from_through_port(self.seq, client_id)
+                # do rtpmidid specific stuff
+                self.connector.connect_from_through_port(self.seq, client_id)
             else:
                 Logger.debug(f"Processing node rtpmidid connections for : {client_name}")
-        
+                # do rtpmidid specific stuff
+                self.connector.connect_network_to_through_port(self.seq, client_id)
+
+            
 
 
     def run(self):
@@ -101,6 +105,7 @@ class CuemsMidiConnector:
                     elif event.type == alsaseq.SEQ_EVENT_PORT_START:
                         #self.graph.port_created(data)
                         Logger.debug(f'port started{data}')
+                        self.new_client(data)
                     elif event.type == alsaseq.SEQ_EVENT_PORT_EXIT:
                         #self.graph.port_destroyed(data)
                         Logger.debug(f'port exited{data}')
@@ -129,78 +134,85 @@ class CuemsMidiConnector:
                 Logger.error(e)
                 Logger.error('something is wrong')
         Logger.debug('exit')
-        print('exit')
         del self.seq
         self.stopped.emit()
 
 
-    def iam_master(self):
-        return True
+    def check_amicontroller(self):
+        if path.exists(path.join(CUEMS_CONF_PATH, CUEMS_CONTROLLER_LOCK_FILE)):
+            return True
+        else:
+            return False
 
 
+class GenericConnection():
+    def __init__(self):
+        self.through_port_id = 14
+        self.through_port_port_id = 0
+        self.through_port = (self.through_port_id, self.through_port_port_id)
 
-class PlayerConecction():
-    
-    @staticmethod
-    def connect_from_through_port(seq, client_id):
-        through_port_id = 14
-        through_port_port_id = 0
-        through_port = (through_port_id, through_port_port_id)
+
+    def connect_from_through_port(self,seq, client_id):
 
         port_info = seq.get_port_info(0, client_id)
 
         client_port = (client_id, 0)
         Logger.debug(f"connecting from through port: {port_info}")
         try:
-            seq.connect_ports(through_port, client_port)
+            seq.connect_ports(self.through_port, client_port)
         except Exception as e:
             Logger.warning(f"Error connecting from through port: {e}")
             return False
-        
 
 
-class MtcMasterConnection():
-
-    @staticmethod
-    def connect_to_through_port(seq, client_id):
-        through_port_id = 14
-        through_port_port_id = 0
-        through_port = (through_port_id, through_port_port_id)
+    def connect_to_through_port(self, seq, client_id):
 
         port_info = seq.get_port_info(0, client_id)
 
         client_port = (client_id, 0)
         Logger.debug(f"connecting to through port: {port_info}")
         try:
-            seq.connect_ports(client_port, through_port)
+            seq.connect_ports(client_port, self.through_port)
         except Exception as e:
-            print(f"Error connecting to through port: {e}")
+            Logger.warning(f"Error connecting to through port: {e}")
+
+    def connect_network_to_through_port(self, seq, client_id):
+        clients = seq.connection_list()
+        first_client_match = next((client for client in clients if client[1] ==  client_id), None)
+        if first_client_match is None:
             Logger.warning(f"Client with id {client_id} not found")
             return False
+        client_name, client_id, ports = first_client_match
+        first_port_match = next((port for port in ports if port[0] ==  NETWORK_PORT_NAME), None)
+        if first_port_match is None:
             Logger.warning(f"Port with name {NETWORK_PORT_NAME} not found")
-        Logger.debug(f"connecting network to through port: '{first_port_match[0]}'")
-            Logger.warning(f"Error connecting to through port: {e}")
-        
-class RtpMidiConnection_Master():
-
-    @staticmethod
-    def connect_from_through_port(seq, client_id):
-        through_port_id = 14
-        through_port_port_id = 0
-        through_port = (through_port_id, through_port_port_id)
-
-        port_info = seq.get_port_info(0, client_id)
-
-        client_port = (client_id, 0)
-        print(f"connecting to through port: {port_info}")
-        try:
-            seq.connect_ports(through_port, client_port)
-        except Exception as e:
-            print(f"Error connecting to through port: {e}")
             return False
+        port_name, port_id, conections_list = first_port_match
+        client_port = (client_id, port_id)
+        Logger.debug(f"connecting network to through port: '{first_port_match[0]}'")
+        try:
+            seq.connect_ports(client_port, self.through_port)
+        except Exception as e:
+            Logger.warning(f"Error connecting to through port: {e}")
 
+        
 
-class RtpMidiConnection_Slave():
+class NodeConnection(GenericConnection):
+    pass    
+
+class PlayerConecction(GenericConnection):
+    
+    pass
+
+class MtcMasterConnection(GenericConnection):
+
+    pass
+        
+class RtpMidiConnection_Master(GenericConnection):
+
+    pass
+
+class RtpMidiConnection_Slave(GenericConnection):
     pass
 
 class VideoConecction(PlayerConecction):

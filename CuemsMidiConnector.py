@@ -4,6 +4,7 @@
 from const import ALSA
 from midiutils import *
 import time
+from cuemsutils.log import logged, Logger
 
 
 
@@ -28,7 +29,7 @@ class CuemsMidiConnector:
             self.id = self.seq.client_id
 
     def new_client(self, data):
-        print("new client: ", data)
+        Logger.debug(f"new client: {data}")
         client_id = data.get('addr.client')
     #    time.sleep(2)  # wait for connection to establish before processing
         self.process_connections(client_id)
@@ -41,7 +42,7 @@ class CuemsMidiConnector:
         self.process_connections(client_id)
 
     def list_clients(self):
-        print('List of clients on startup:')
+        Logger.debug('List of clients on startup:')
         conection_list = self.seq.connection_list()
         for client in conection_list:
             client_name, client_id, ports = client
@@ -59,26 +60,26 @@ class CuemsMidiConnector:
     def process_connections(self,client_id):
         client_info =self.seq.get_client_info(client_id)
         client_name = client_info.get('name')
-        print(f"processing conections for : {client_name}")
+        Logger.debug(f"processing conections for : {client_name}")
 
 
         if "xjadeo" in client_name:
-            print(f"Processing xjadeo connections for : {client_name}")
+            Logger.debug(f"Processing xjadeo connections for : {client_name}")
             # do xjadeo specific stuff
             PlayerConecction.connect_from_through_port(self.seq, client_id)
 
         if "MtcMaster" in client_name:
-            print(f"Processing MtcMaster connections for : {client_name}")
+            Logger.debug(f"Processing MtcMaster connections for : {client_name}")
             # do MtcMaster specific stuff
             MtcMasterConnection.connect_to_through_port(self.seq, client_id)
 
         if "rtpmidid" in client_name:
             print(f"Processing rtpmidid connections for : {client_name}")
-            # do rtpmidid specific stuff
+                Logger.debug(f"Processing Master rtpmidid connections for : {client_name}")
             if self.master:
                 RtpMidiConnection_Master.connect_from_through_port(self.seq, client_id)
             else:
-                RtpMidiConnection_Slave.connect_to_through_port(self.seq, client_id)
+                Logger.debug(f"Processing node rtpmidid connections for : {client_name}")
         
 
 
@@ -92,23 +93,23 @@ class CuemsMidiConnector:
                     data = event.get_data()
                     if event.type == alsaseq.SEQ_EVENT_CLIENT_START:
                         #self.graph.client_created(data)
-                        print(f'client started{data}')
+                        Logger.debug(f'client started{data}')
                         self.new_client(data)
                     elif event.type == alsaseq.SEQ_EVENT_CLIENT_EXIT:
                         #self.graph.client_destroyed(data)
-                        print(f'client exited{data}')
+                        Logger.debug(f'client exited{data}')
                     elif event.type == alsaseq.SEQ_EVENT_PORT_START:
                         #self.graph.port_created(data)
-                        print(f'port started{data}')
+                        Logger.debug(f'port started{data}')
                     elif event.type == alsaseq.SEQ_EVENT_PORT_EXIT:
                         #self.graph.port_destroyed(data)
-                        print(f'port exited{data}')
+                        Logger.debug(f'port exited{data}')
                     elif event.type == alsaseq.SEQ_EVENT_PORT_SUBSCRIBED:
                         #self.graph.conn_created(data)
-                        print(f'port subscribed{data}')
+                        Logger.debug(f'port subscribed{data}')
                     elif event.type == alsaseq.SEQ_EVENT_PORT_UNSUBSCRIBED:
                         #self.graph.conn_destroyed(data)
-                        print(f'port unsubscribed{data}')
+                        Logger.debug(f'port unsubscribed{data}')
                         self.port_unsusubscribed(data)
                     elif event.type in [alsaseq.SEQ_EVENT_NOTEON, alsaseq.SEQ_EVENT_NOTEOFF, 
                                         alsaseq.SEQ_EVENT_CONTROLLER, alsaseq.SEQ_EVENT_PGMCHANGE,
@@ -116,18 +117,18 @@ class CuemsMidiConnector:
                         try:
                             newev = MidiEvent.from_alsa(event)
                             self.midi_event.emit(newev)
-                            print(newev)
+                            Logger.debug(newev)
                         except Exception as e:
-                            print('event {} unrecognized').format(event)
-                            print(e)
+                            Logger.error('event {} unrecognized').format(event)
+                            Logger.error(e)
                     elif event.type in [alsaseq.SEQ_EVENT_CLOCK, alsaseq.SEQ_EVENT_SENSING]:
                         pass
                     elif event.type == alsaseq.SEQ_EVENT_SYSEX:
                         self.check(event)
             except Exception as e:
-                print(e)
-                print('something is wrong')
-#        print 'stopped'
+                Logger.error(e)
+                Logger.error('something is wrong')
+        Logger.debug('exit')
         print('exit')
         del self.seq
         self.stopped.emit()
@@ -149,11 +150,11 @@ class PlayerConecction():
         port_info = seq.get_port_info(0, client_id)
 
         client_port = (client_id, 0)
-        print(f"connecting from through port: {port_info}")
+        Logger.debug(f"connecting from through port: {port_info}")
         try:
             seq.connect_ports(through_port, client_port)
         except Exception as e:
-            print(f"Error connecting from through port: {e}")
+            Logger.warning(f"Error connecting from through port: {e}")
             return False
         
 
@@ -169,12 +170,16 @@ class MtcMasterConnection():
         port_info = seq.get_port_info(0, client_id)
 
         client_port = (client_id, 0)
-        print(f"connecting to through port: {port_info}")
+        Logger.debug(f"connecting to through port: {port_info}")
         try:
             seq.connect_ports(client_port, through_port)
         except Exception as e:
             print(f"Error connecting to through port: {e}")
+            Logger.warning(f"Client with id {client_id} not found")
             return False
+            Logger.warning(f"Port with name {NETWORK_PORT_NAME} not found")
+        Logger.debug(f"connecting network to through port: '{first_port_match[0]}'")
+            Logger.warning(f"Error connecting to through port: {e}")
         
 class RtpMidiConnection_Master():
 

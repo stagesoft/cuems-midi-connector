@@ -1,6 +1,3 @@
-
-# we need to use system pyalsa package to virtualenv
-# ln -s /usr/lib/python3/dist-packages/pyalsa $HOME/.pyenv/versions/3.11.2/envs/cuems/lib/python3.11/site-packages/
 from const import ALSA
 from midiutils import *
 import time

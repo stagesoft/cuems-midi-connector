@@ -1,6 +1,5 @@
 
 
-import pickle
 from os import path
 from collections import namedtuple
 

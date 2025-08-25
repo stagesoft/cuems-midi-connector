@@ -1,5 +1,6 @@
 from const import ALSA
 from midiutils import *
+from pyalsa import alsaseq
 import time
 from cuemsutils.log import logged, Logger
 
@@ -12,20 +13,26 @@ NETWORK_PORT_NAME = 'Midi Through-Midi Through Port-0'
 
 class CuemsMidiConnector:
     def __init__(self):
-            self.seq = alsaseq.Sequencer(clientname='CuemsMidiConnector')
+            
             self.controller = False
             #self.controller= self.check_amicontroller()
             self.keep_going = True
-            self.connector = GenericConnection()
-            input_id = self.seq.create_simple_port(
-                name='input', 
-                type=alsaseq.SEQ_PORT_TYPE_MIDI_GENERIC|alsaseq.SEQ_PORT_TYPE_APPLICATION, 
-                caps=alsaseq.SEQ_PORT_CAP_WRITE|alsaseq.SEQ_PORT_CAP_SUBS_WRITE|
-                alsaseq.SEQ_PORT_CAP_SYNC_WRITE)
+            
 
-            self.seq.connect_ports((alsaseq.SEQ_CLIENT_SYSTEM, alsaseq.SEQ_PORT_SYSTEM_ANNOUNCE), (self.seq.client_id, input_id))
-            self.id = self.seq.client_id
+    def start(self):
+        self.seq = alsaseq.Sequencer(clientname='CuemsMidiConnector')
+        self.connector = GenericConnection()
+        Logger.debug('Starting CuemsMidiConnector')
+        input_id = self.seq.create_simple_port(
+        name='input', 
+        type=alsaseq.SEQ_PORT_TYPE_MIDI_GENERIC|alsaseq.SEQ_PORT_TYPE_APPLICATION, 
+        caps=alsaseq.SEQ_PORT_CAP_WRITE|alsaseq.SEQ_PORT_CAP_SUBS_WRITE|
+        alsaseq.SEQ_PORT_CAP_SYNC_WRITE)
 
+        self.seq.connect_ports((alsaseq.SEQ_CLIENT_SYSTEM, alsaseq.SEQ_PORT_SYSTEM_ANNOUNCE), (self.seq.client_id, input_id))
+        self.id = self.seq.client_id        
+        
+        self.run()
     def new_client(self, data):
         Logger.debug(f"new client: {data}")
         client_id = data.get('addr.client')

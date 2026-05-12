@@ -1,0 +1,21 @@
+# /etc/cuems/midiconnector.conf
+# Format: <direction> <client-name-substring>
+# direction ∈ {from_through, to_through, network}
+# Lines starting with # ignored. First column = direction; the rest of the
+# line is the pattern (leading/trailing whitespace stripped).
+
+# Engine + players that consume MTC from Midi Through Port-0
+from_through  Cuems Mtc Receiver
+from_through  DMX_Player
+from_through  cuems-videocomposer
+
+# Timecode source — feeds Midi Through Port-0
+to_through    MtcMaster
+
+# Network bridge — direction flips by role (controller vs node)
+network       rtpmidid
+
+# RtMidiIn deliberately omitted from defaults: the engine wires its own
+# RtMidiIn consumers directly from MtcMaster:0 (visible in aconnect as
+# 129:0 -> 131:0). Adding `from_through RtMidiIn` here would create a
+# duplicate MTC stream to those consumers and produce jitter.

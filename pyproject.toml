@@ -1,0 +1,47 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "cuemsmidiconnector"
+version = "0.1.0"
+description = "ALSA seq auto-wiring daemon for CUEMS MTC distribution"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = ["Ion Reguera <ion@stagelab.coop>"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: System :: Hardware",
+]
+repository = "https://github.com/stagesoft/cuems-midi-connector"
+homepage = "https://github.com/stagesoft/cuems-midi-connector"
+
+[[tool.poetry.packages]]
+include = "cuemsmidiconnector"
+from = "src"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+cuemsutils = ">=0.1.0rc7"
+# pyalsa is provided by python3-pyalsa (see debian/control); installed into
+# the venv via --use-system-packages.
+# systemd-python is provided by python3-systemd.
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.0"
+pytest-mock = "*"
+
+[tool.poetry.scripts]
+cuems-midiconnector = "cuemsmidiconnector.scripts.midiconnector:main"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = ["-v", "-ra", "--strict-markers"]
+pythonpath = ["src"]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

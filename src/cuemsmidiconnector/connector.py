@@ -17,7 +17,10 @@ from .config import MidiConnectorConfig
 
 MASTER_IP_FILE = "/etc/cuems/master.ip"
 THROUGH_PORT_NAME = "Midi Through Port-0"
-NETWORK_PORT_NAME = "Midi Through-Midi Through Port-0"
+
+# rtpmidid exposes infrastructure ports alongside per-peer relay ports.
+# Names are matched after .strip() — pyalsa returns trailing-padded labels.
+RTPMIDID_INFRA_PORT_NAMES = frozenset({"Network Export", "Announcements"})
 
 
 def _is_busy_error(err: SequencerError) -> bool:
@@ -36,9 +39,10 @@ class GenericConnection:
     def _resolve_through_port(self) -> tuple[int, int]:
         # `Midi Through Port-0` is the port name on the kernel `Midi Through`
         # client. Iterate every client's ports and match on the port name.
+        # pyalsa pads names with trailing whitespace — strip before compare.
         for _client_name, client_id, ports in self.seq.connection_list():
             for port_name, port_id, _ in ports:
-                if port_name == THROUGH_PORT_NAME:
+                if port_name.strip() == THROUGH_PORT_NAME:
                     Logger.info(
                         f"resolved {THROUGH_PORT_NAME!r} at {client_id}:{port_id}"
                     )
@@ -66,9 +70,14 @@ class GenericConnection:
         self._connect((client_id, 0), self.through_port)
 
     def connect_network_to_through_port(self, client_id: int) -> None:
-        """rtpmidid exposes per-peer ports plus a relay port whose name is
-        NETWORK_PORT_NAME — that's the one we feed into our local Midi
-        Through hub on node hosts."""
+        """For node hosts: wire every per-peer rtpmidid port into the local
+        Midi Through hub. Peer ports are everything on the rtpmidid client
+        except the well-known infrastructure ports (Network Export, used to
+        export the local Midi Through outwards; Announcements, used for
+        rtpmidid internal status).
+
+        Port names returned by pyalsa carry trailing whitespace padding —
+        always compare stripped."""
         match = next(
             (c for c in self.seq.connection_list() if c[1] == client_id), None
         )
@@ -76,16 +85,17 @@ class GenericConnection:
             Logger.warning(f"client {client_id} disappeared before network wiring")
             return
         _, _, ports = match
-        port_match = next(
-            (p for p in ports if p[0] == NETWORK_PORT_NAME), None
-        )
-        if port_match is None:
+        wired_any = False
+        for port_name, port_id, _ in ports:
+            if port_name.strip() in RTPMIDID_INFRA_PORT_NAMES:
+                continue
+            self._connect((client_id, port_id), self.through_port)
+            wired_any = True
+        if not wired_any:
             Logger.warning(
-                f"port {NETWORK_PORT_NAME!r} not found on client {client_id}"
+                f"no peer ports found on rtpmidid client {client_id}; "
+                "wiring stays dormant until a peer announces"
             )
-            return
-        _, port_id, _ = port_match
-        self._connect((client_id, port_id), self.through_port)
 
 
 class CuemsMidiConnector(SignalEngine):

@@ -1,0 +1,35 @@
+Source: cuems-midi-connector
+Section: python
+Priority: optional
+Maintainer: Ion Reguera <ion@stagelab.coop>
+Build-Depends: debhelper-compat (= 13),
+               dh-virtualenv (>= 1.2),
+               python3-all,
+               python3-setuptools,
+               python3-pip,
+               python3-dev
+Standards-Version: 4.6.0
+Homepage: https://github.com/stagesoft/cuems-midi-connector
+
+Package: cuems-midi-connector
+Architecture: all
+Depends: ${misc:Depends},
+         ${python3:Depends},
+         cuems-utils (>= 0.1.0rc7),
+         cuems-common (>= 1.0.0),
+         python3 (>= 3.11),
+         python3-pyalsa,
+         python3-systemd (>= 235)
+Description: CUEMS ALSA seq auto-wiring daemon for MTC distribution
+ cuems-midi-connector listens to ALSA sequencer announce events and
+ auto-wires MTC connections between Midi Through Port-0, rtpmidid,
+ MtcMaster, and the per-player MTC receivers across a CUEMS cluster.
+ .
+ The daemon detects controller vs node role at runtime via the presence
+ of /etc/cuems/master.ip and adjusts rtpmidid wiring direction
+ accordingly, supporting role-flips without reinstallation.
+ .
+ This package installs into the /usr/lib/cuems/ virtual environment
+ provided by cuems-utils. The console script is installed at
+ /usr/lib/cuems/bin/cuems-midiconnector and is invoked by the systemd
+ unit shipped in cuems-common.

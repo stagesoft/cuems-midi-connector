@@ -1,0 +1,14 @@
+cuems-midi-connector (0.1.0-1) UNRELEASED; urgency=medium
+
+  * Initial Debian packaging (dh-virtualenv).
+  * Restructure to src/cuemsmidiconnector/ layout; drop dead synth-editor
+    cruft (const.py, midiutils.py, python_alsa_midi.py).
+  * Fix always-true pattern match; load wiring rules from
+    /etc/cuems/midiconnector.conf with package-data fallback.
+  * Detect controller role via /etc/cuems/master.ip presence (re-evaluated
+    per event to support runtime role-flips).
+  * SignalEngine integration with sd_notify READY=1.
+  * Downgrade transient ALSA seq client errors to debug log level.
+  * Add pytest suite for config parser, role detection, and pattern routing.
+
+ -- Ion Reguera <ion@stagelab.coop>  Tue, 12 May 2026 12:00:00 +0200

@@ -1,0 +1,66 @@
+#!/usr/bin/make -f
+
+export DH_VIRTUALENV_INSTALL_ROOT=/usr/lib
+
+%:
+	dh $@ --with python-virtualenv
+
+override_dh_virtualenv:
+	# Install into the shared venv at /usr/lib/cuems (created by cuems-utils)
+	dh_virtualenv --python python3 \
+		--install-suffix cuems \
+		--use-system-packages
+
+override_dh_auto_clean:
+	rm -rf build *.egg-info src/*.egg-info
+	find . -name '*.pyc' -delete
+	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+	dh_auto_clean
+
+override_dh_fixperms:
+	# Remove .gitignore files installed by dh_virtualenv
+	find debian/cuems-midi-connector -name ".gitignore" -delete
+	# Remove virtualenv infrastructure (provided by cuems-utils)
+	find debian/cuems-midi-connector/usr/lib/cuems/bin -name "activate*" -delete
+	find debian/cuems-midi-connector/usr/lib/cuems/bin -name "pip*" -delete
+	find debian/cuems-midi-connector/usr/lib/cuems/bin -name "python*" -delete
+	find debian/cuems-midi-connector/usr/lib/cuems/bin -name "wheel*" -delete
+	rm -f debian/cuems-midi-connector/usr/lib/cuems/pyvenv.cfg
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/_virtualenv.*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/_distutils_hack
+	# Remove cuemsutils + transitive deps (provided by cuems-utils package)
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/cuemsutils*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/aiofiles*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/cffi*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/deprecated*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/Deprecated*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/elementpath*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/json_fix*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/lxml*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/peewee*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/playhouse
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/pycparser*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/pynng*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/sniffio*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/timecode*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/websockets*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/wrapt*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/xmlschema*
+	# Remove systemd-python (provided by python3-systemd Debian package)
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/systemd*
+	# Remove pip/setuptools/wheel (provided by cuems-utils)
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/pip*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/setuptools*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/wheel*
+	rm -rf debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages/pkg_resources
+	# Remove .so files (Python C extensions belong to system Debian packages)
+	find debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages -name "*.so" -delete
+	find debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages -name "*.pth" -delete
+	# Remove __pycache__ from installed tree
+	find debian/cuems-midi-connector -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+	find debian/cuems-midi-connector -name '*.pyc' -delete
+	find debian/cuems-midi-connector -name '*.pyo' -delete
+	dh_fixperms
+
+override_dh_auto_test:
+	# Skip pytest during package build (run separately in CI / locally)

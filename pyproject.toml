@@ -27,7 +27,7 @@ from = "src"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-cuemsutils = ">=0.1.0rc7"
+cuemsutils = ">=0.1.0rc5"
 # pyalsa is provided by python3-pyalsa (see debian/control); installed into
 # the venv via --use-system-packages.
 # systemd-python is provided by python3-systemd.

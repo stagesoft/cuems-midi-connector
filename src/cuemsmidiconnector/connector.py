@@ -53,9 +53,12 @@ class GenericConnection:
         )
         return (14, 0)
 
-    def _connect(self, src: tuple[int, int], dst: tuple[int, int]) -> None:
+    def _connect(self, src: tuple[int, int], dst: tuple[int, int],
+                 time_update: int = 0, time_real: int = 0) -> None:
         try:
-            self.seq.connect_ports(src, dst)
+            # pyalsa connect_ports is native / POSITIONAL-only:
+            # (src, dst, queue, exclusive, time_update, time_real)
+            self.seq.connect_ports(src, dst, 0, 0, time_update, time_real)
             Logger.info(f"wired {src[0]}:{src[1]} -> {dst[0]}:{dst[1]}")
         except SequencerError as e:
             if _is_busy_error(e):
@@ -67,7 +70,11 @@ class GenericConnection:
         self._connect(self.through_port, (client_id, 0))
 
     def connect_to_through_port(self, client_id: int) -> None:
-        self._connect((client_id, 0), self.through_port)
+        # Match libmtcmaster/RtMidi's real-time-timestamped subscription so
+        # ALSA dedupes this redundant link (EBUSY) instead of keeping both
+        # (which doubled MTC quarter-frames and killed DMX). ClickUp 869djtm9j.
+        self._connect((client_id, 0), self.through_port,
+                      time_update=1, time_real=1)
 
     def connect_network_to_through_port(self, client_id: int) -> None:
         """For node hosts: wire every per-peer rtpmidid port into the local

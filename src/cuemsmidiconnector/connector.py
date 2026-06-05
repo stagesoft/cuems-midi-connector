@@ -24,7 +24,12 @@ THROUGH_PORT_NAME = "Midi Through Port-0"
 # hits EBUSY (which makes RtMidi throw and the player die on cold boot, DMX dead).
 # After the grace we attempt the wire anyway as a resilience fallback (the
 # connect path is EBUSY-tolerant, so an already-self-wired link is a no-op).
-FROM_THROUGH_GRACE_S = 1.0
+try:
+    FROM_THROUGH_GRACE_S = float(
+        os.environ.get("CUEMS_MIDICONN_FROM_THROUGH_GRACE_S", "1.0")
+    )
+except ValueError:
+    FROM_THROUGH_GRACE_S = 1.0
 
 # rtpmidid exposes infrastructure ports alongside per-peer relay ports.
 # Names are matched after .strip() — pyalsa returns trailing-padded labels.
@@ -163,7 +168,12 @@ class CuemsMidiConnector(SignalEngine):
         Logger.debug(f"new client/port event: {data}")
         client_id = data.get("addr.client")
         if client_id is not None:
-            self.process_connections(client_id)
+            # Defer ONLY for brand-new clients: a fresh from_through player
+            # self-subscribes via its own openPort and would EBUSY-throw if we
+            # win that race. The port_unsubscribed re-wire (resilience) and the
+            # startup scan must stay immediate -- no openPort race there, and a
+            # live show needs instant recovery on a dropped link.
+            self.process_connections(client_id, defer_from_through=True)
 
     def port_unsubscribed(self, data: dict) -> None:
         for key in ("connect.sender.client", "connect.dest.client"):
@@ -171,7 +181,8 @@ class CuemsMidiConnector(SignalEngine):
             if client_id is not None:
                 self.process_connections(client_id)
 
-    def process_connections(self, client_id: int) -> None:
+    def process_connections(self, client_id: int,
+                            defer_from_through: bool = False) -> None:
         try:
             client_info = self.seq.get_client_info(client_id)
         except SequencerError as e:
@@ -191,7 +202,10 @@ class CuemsMidiConnector(SignalEngine):
         )
 
         if direction == "from_through":
-            self._schedule_from_through(client_id)
+            if defer_from_through:
+                self._schedule_from_through(client_id)
+            else:
+                self.connector.connect_from_through_port(client_id)
         elif direction == "to_through":
             self.connector.connect_to_through_port(client_id)
         elif direction == "network":
@@ -207,6 +221,10 @@ class CuemsMidiConnector(SignalEngine):
         # the port-announce first) the player's openPort hits EBUSY and RtMidi
         # THROWS -> the player dies on cold boot. Wait, let it self-wire, then
         # attempt the wire as an EBUSY-tolerant resilience fallback.
+        if client_id in self.pending_from_through:
+            # Anchor the deadline on the FIRST announce; duplicate
+            # CLIENT_START/PORT_START events must not push it out.
+            return
         self.pending_from_through[client_id] = time.monotonic() + FROM_THROUGH_GRACE_S
         Logger.debug(
             f"deferring from_through wire for client {client_id} by "
@@ -220,6 +238,13 @@ class CuemsMidiConnector(SignalEngine):
         due = [cid for cid, t in self.pending_from_through.items() if t <= now]
         for client_id in due:
             self.pending_from_through.pop(client_id, None)
+            # Skip if the client vanished during the grace (e.g. clean shutdown)
+            # to avoid a spurious connect_ports warning on a dead client.
+            try:
+                self.seq.get_client_info(client_id)
+            except SequencerError:
+                Logger.debug(f"client {client_id} gone before deferred wire; skipping")
+                continue
             # EBUSY-tolerant: already self-wired -> harmless no-op; otherwise we
             # establish the link (resilience fallback).
             self.connector.connect_from_through_port(client_id)
@@ -233,11 +258,13 @@ class CuemsMidiConnector(SignalEngine):
                 event_list = self.seq.receive_events(timeout=1024, maxevents=1)
                 for event in event_list:
                     self._dispatch(event)
+                # Drain inside the try so an unexpected error here is caught by
+                # the handlers below instead of killing the event loop.
+                self._process_pending_from_through()
             except SequencerError as e:
                 Logger.warning(f"ALSA seq receive_events error: {e}")
             except Exception as e:
                 Logger.error(f"unexpected error in event loop: {e}")
-            self._process_pending_from_through()
         Logger.info("event loop exited cleanly")
 
     def _dispatch(self, event) -> None:

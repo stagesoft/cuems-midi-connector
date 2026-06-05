@@ -36,7 +36,8 @@ class _RecordingSeq:
                 [(name, pid, []) for name, pid in self.rtpmidid_ports]),
         ]
 
-    def connect_ports(self, src, dst):
+    def connect_ports(self, src, dst, queue=0, exclusive=0,
+                      time_update=0, time_real=0):
         self.calls.append((tuple(src), tuple(dst)))
 
 

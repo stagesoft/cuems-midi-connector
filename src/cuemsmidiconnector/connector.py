@@ -5,6 +5,7 @@
 """ALSA seq auto-wiring daemon for CUEMS MTC distribution."""
 
 import os
+import time
 
 from pyalsa import alsaseq
 from pyalsa.alsaseq import SequencerError
@@ -17,6 +18,18 @@ from .config import MidiConnectorConfig
 
 MASTER_IP_FILE = "/etc/cuems/master.ip"
 THROUGH_PORT_NAME = "Midi Through Port-0"
+
+# Grace before midi-connector wires Midi Through -> a from_through player's recv
+# port. Lets the player's own RtMidi openPort(0) self-subscribe FIRST so it never
+# hits EBUSY (which makes RtMidi throw and the player die on cold boot, DMX dead).
+# After the grace we attempt the wire anyway as a resilience fallback (the
+# connect path is EBUSY-tolerant, so an already-self-wired link is a no-op).
+try:
+    FROM_THROUGH_GRACE_S = float(
+        os.environ.get("CUEMS_MIDICONN_FROM_THROUGH_GRACE_S", "1.0")
+    )
+except ValueError:
+    FROM_THROUGH_GRACE_S = 1.0
 
 # rtpmidid exposes infrastructure ports alongside per-peer relay ports.
 # Names are matched after .strip() — pyalsa returns trailing-padded labels.
@@ -53,9 +66,12 @@ class GenericConnection:
         )
         return (14, 0)
 
-    def _connect(self, src: tuple[int, int], dst: tuple[int, int]) -> None:
+    def _connect(self, src: tuple[int, int], dst: tuple[int, int],
+                 time_update: int = 0, time_real: int = 0) -> None:
         try:
-            self.seq.connect_ports(src, dst)
+            # pyalsa connect_ports is native / POSITIONAL-only:
+            # (src, dst, queue, exclusive, time_update, time_real)
+            self.seq.connect_ports(src, dst, 0, 0, time_update, time_real)
             Logger.info(f"wired {src[0]}:{src[1]} -> {dst[0]}:{dst[1]}")
         except SequencerError as e:
             if _is_busy_error(e):
@@ -67,7 +83,11 @@ class GenericConnection:
         self._connect(self.through_port, (client_id, 0))
 
     def connect_to_through_port(self, client_id: int) -> None:
-        self._connect((client_id, 0), self.through_port)
+        # Match libmtcmaster/RtMidi's real-time-timestamped subscription so
+        # ALSA dedupes this redundant link (EBUSY) instead of keeping both
+        # (which doubled MTC quarter-frames and killed DMX). ClickUp 869djtm9j.
+        self._connect((client_id, 0), self.through_port,
+                      time_update=1, time_real=1)
 
     def connect_network_to_through_port(self, client_id: int) -> None:
         """For node hosts: wire every per-peer rtpmidid port into the local
@@ -130,6 +150,9 @@ class CuemsMidiConnector(SignalEngine):
 
         self.connector = GenericConnection(self.seq)
 
+        # client_id -> monotonic due-time for deferred from_through wiring
+        self.pending_from_through = {}
+
     @staticmethod
     def _detect_controller_role() -> bool:
         return os.path.exists(MASTER_IP_FILE)
@@ -145,7 +168,12 @@ class CuemsMidiConnector(SignalEngine):
         Logger.debug(f"new client/port event: {data}")
         client_id = data.get("addr.client")
         if client_id is not None:
-            self.process_connections(client_id)
+            # Defer ONLY for brand-new clients: a fresh from_through player
+            # self-subscribes via its own openPort and would EBUSY-throw if we
+            # win that race. The port_unsubscribed re-wire (resilience) and the
+            # startup scan must stay immediate -- no openPort race there, and a
+            # live show needs instant recovery on a dropped link.
+            self.process_connections(client_id, defer_from_through=True)
 
     def port_unsubscribed(self, data: dict) -> None:
         for key in ("connect.sender.client", "connect.dest.client"):
@@ -153,7 +181,8 @@ class CuemsMidiConnector(SignalEngine):
             if client_id is not None:
                 self.process_connections(client_id)
 
-    def process_connections(self, client_id: int) -> None:
+    def process_connections(self, client_id: int,
+                            defer_from_through: bool = False) -> None:
         try:
             client_info = self.seq.get_client_info(client_id)
         except SequencerError as e:
@@ -173,7 +202,10 @@ class CuemsMidiConnector(SignalEngine):
         )
 
         if direction == "from_through":
-            self.connector.connect_from_through_port(client_id)
+            if defer_from_through:
+                self._schedule_from_through(client_id)
+            else:
+                self.connector.connect_from_through_port(client_id)
         elif direction == "to_through":
             self.connector.connect_to_through_port(client_id)
         elif direction == "network":
@@ -181,6 +213,41 @@ class CuemsMidiConnector(SignalEngine):
                 self.connector.connect_from_through_port(client_id)
             else:
                 self.connector.connect_network_to_through_port(client_id)
+
+    def _schedule_from_through(self, client_id: int) -> None:
+        # Defer the Midi Through -> player wire. The player's own RtMidi
+        # openPort(0) self-subscribes 14:0 -> its recv port within the same call
+        # that creates the port; if midi-connector wins that race (we react to
+        # the port-announce first) the player's openPort hits EBUSY and RtMidi
+        # THROWS -> the player dies on cold boot. Wait, let it self-wire, then
+        # attempt the wire as an EBUSY-tolerant resilience fallback.
+        if client_id in self.pending_from_through:
+            # Anchor the deadline on the FIRST announce; duplicate
+            # CLIENT_START/PORT_START events must not push it out.
+            return
+        self.pending_from_through[client_id] = time.monotonic() + FROM_THROUGH_GRACE_S
+        Logger.debug(
+            f"deferring from_through wire for client {client_id} by "
+            f"{FROM_THROUGH_GRACE_S}s (let it self-wire first)"
+        )
+
+    def _process_pending_from_through(self) -> None:
+        if not self.pending_from_through:
+            return
+        now = time.monotonic()
+        due = [cid for cid, t in self.pending_from_through.items() if t <= now]
+        for client_id in due:
+            self.pending_from_through.pop(client_id, None)
+            # Skip if the client vanished during the grace (e.g. clean shutdown)
+            # to avoid a spurious connect_ports warning on a dead client.
+            try:
+                self.seq.get_client_info(client_id)
+            except SequencerError:
+                Logger.debug(f"client {client_id} gone before deferred wire; skipping")
+                continue
+            # EBUSY-tolerant: already self-wired -> harmless no-op; otherwise we
+            # establish the link (resilience fallback).
+            self.connector.connect_from_through_port(client_id)
 
     def run(self) -> None:
         self.running = True
@@ -191,6 +258,9 @@ class CuemsMidiConnector(SignalEngine):
                 event_list = self.seq.receive_events(timeout=1024, maxevents=1)
                 for event in event_list:
                     self._dispatch(event)
+                # Drain inside the try so an unexpected error here is caught by
+                # the handlers below instead of killing the event loop.
+                self._process_pending_from_through()
             except SequencerError as e:
                 Logger.warning(f"ALSA seq receive_events error: {e}")
             except Exception as e:

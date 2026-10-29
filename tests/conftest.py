@@ -37,7 +37,8 @@ class FakeSequencer:
             )
         return {"name": self.clients[client_id]}
 
-    def connect_ports(self, src, dst) -> None:
+    def connect_ports(self, src, dst, queue=0, exclusive=0,
+                      time_update=0, time_real=0) -> None:
         self.calls.append(("connect_ports", tuple(src), tuple(dst)))
 
     def connection_list(self) -> list[tuple[str, int, list]]:

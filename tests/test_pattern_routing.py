@@ -51,6 +51,7 @@ def _make_connector(monkeypatch, conf_body: str, *, controller: bool, clients: d
     # Inject our fake seq + stub connector.
     inst.seq = _MiniSeq(clients)
     inst.connector = _StubConnector()
+    inst.pending_from_through = {}
     return inst
 
 
@@ -159,3 +160,17 @@ def test_role_flip_takes_effect_mid_run(monkeypatch, base_conf):
     )
     inst.process_connections(128)
     assert inst.connector.calls[-1] == ("from_through", 128)
+
+
+def test_new_client_defers_from_through(monkeypatch, base_conf):
+    inst = _make_connector(
+        monkeypatch,
+        base_conf,
+        controller=False,
+        clients={132: "DMX_Player"},
+    )
+    inst.new_client({"addr.client": 132})
+    # Deferred: NOT wired inline -- scheduled for the grace-period fallback so the
+    # player's own openPort self-wires first (avoids the cold-boot EBUSY race).
+    assert inst.connector.calls == []
+    assert 132 in inst.pending_from_through

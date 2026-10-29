@@ -1,3 +1,18 @@
+cuems-midi-connector (0.1.0-2) bookworm; urgency=medium
+
+  * The code the field actually runs: 0.1.0-1 + branch
+    fix/mtc-dedup-realtime-flags (connector.py md5 d6467785, identical on
+    the 4 Medina boxes, the test rigs and alq3, where it was hand-installed).
+    0.1.0-1's note that it was "the version the rc1-era fleet runs" was
+    wrong: the fleet runs this connector.py.
+    - Real-time flags on the MtcMaster -> Midi Through subscription, so ALSA
+      dedupes it instead of doubling MTC quarter-frames (fa88dfe, 869djtm9j).
+    - from_through wiring deferred on the new-client path, so a player's own
+      subscription wins the race at cold boot (9af92bb, e670215; "DMX dead
+      on cold boot").
+
+ -- Ion Reguera <ion@stagelab.coop>  Thu, 29 Oct 2026 15:57:29 +0100
+
 cuems-midi-connector (0.1.0-1) bookworm; urgency=medium
 
   * Initial Debian packaging (dh-virtualenv).

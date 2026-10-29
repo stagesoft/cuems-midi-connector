@@ -1,4 +1,4 @@
-cuems-midi-connector (0.1.0-1) UNRELEASED; urgency=medium
+cuems-midi-connector (0.1.0-1) bookworm; urgency=medium
 
   * Initial Debian packaging (dh-virtualenv).
   * Restructure to src/cuemsmidiconnector/ layout; drop dead synth-editor
@@ -10,5 +10,7 @@ cuems-midi-connector (0.1.0-1) UNRELEASED; urgency=medium
   * SignalEngine integration with sd_notify READY=1.
   * Downgrade transient ALSA seq client errors to debug log level.
   * Add pytest suite for config parser, role detection, and pattern routing.
+  * Released 2026-10-29 as the version every rc1-era box already runs
+    (Medina, alquiler2, the test rigs): code identical to 6da7874.
 
- -- Ion Reguera <ion@stagelab.coop>  Tue, 12 May 2026 12:00:00 +0200
+ -- Ion Reguera <ion@stagelab.coop>  Thu, 29 Oct 2026 15:49:59 +0100

@@ -1,0 +1,33 @@
+cuems-midi-connector (0.1.0-2) bookworm; urgency=medium
+
+  * The code the field actually runs: 0.1.0-1 + branch
+    fix/mtc-dedup-realtime-flags (connector.py md5 d6467785, identical on
+    the 4 Medina boxes, the test rigs and alq3, where it was hand-installed).
+    0.1.0-1's note that it was "the version the rc1-era fleet runs" was
+    wrong: the fleet runs this connector.py.
+    - Real-time flags on the MtcMaster -> Midi Through subscription, so ALSA
+      dedupes it instead of doubling MTC quarter-frames (fa88dfe, 869djtm9j).
+    - from_through wiring deferred on the new-client path, so a player's own
+      subscription wins the race at cold boot (9af92bb, e670215; "DMX dead
+      on cold boot").
+  * Rebuilt 2026-11-25 with the same code: the package no longer ships files of
+    the shared venv owned by cuems-utils.
+
+ -- Ion Reguera <ion@stagelab.coop>  Thu, 29 Oct 2026 15:57:29 +0100
+
+cuems-midi-connector (0.1.0-1) bookworm; urgency=medium
+
+  * Initial Debian packaging (dh-virtualenv).
+  * Restructure to src/cuemsmidiconnector/ layout; drop dead synth-editor
+    cruft (const.py, midiutils.py, python_alsa_midi.py).
+  * Fix always-true pattern match; load wiring rules from
+    /etc/cuems/midiconnector.conf with package-data fallback.
+  * Detect controller role via /etc/cuems/master.ip presence (re-evaluated
+    per event to support runtime role-flips).
+  * SignalEngine integration with sd_notify READY=1.
+  * Downgrade transient ALSA seq client errors to debug log level.
+  * Add pytest suite for config parser, role detection, and pattern routing.
+  * Released 2026-10-29 as the version every rc1-era box already runs
+    (Medina, alquiler2, the test rigs): code identical to 6da7874.
+
+ -- Ion Reguera <ion@stagelab.coop>  Thu, 29 Oct 2026 15:49:59 +0100

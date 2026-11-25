@@ -10,6 +10,8 @@ cuems-midi-connector (0.1.0-2) bookworm; urgency=medium
     - from_through wiring deferred on the new-client path, so a player's own
       subscription wins the race at cold boot (9af92bb, e670215; "DMX dead
       on cold boot").
+  * Rebuilt 2026-11-25 with the same code: the package no longer ships files of
+    the shared venv owned by cuems-utils.
 
  -- Ion Reguera <ion@stagelab.coop>  Thu, 29 Oct 2026 15:57:29 +0100
 

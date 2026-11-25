@@ -1,4 +1,5 @@
 #!/usr/bin/make -f
+# SPDX-FileContributor: Ion Reguera <ion@stagelab.coop>
 
 export DH_VIRTUALENV_INSTALL_ROOT=/usr/lib
 
@@ -56,6 +57,15 @@ override_dh_fixperms:
 	# Remove .so files (Python C extensions belong to system Debian packages)
 	find debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages -name "*.so" -delete
 	find debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages -name "*.pth" -delete
+	# Ship only this package's own files: the shared venv belongs to cuems-utils.
+	# The by-name removals above missed cffi-gen-src, pwiz.py, xmlschema-* and
+	# CACHEDIR.TAG, which dpkg refuses to overwrite (same approach as cuems-editor).
+	find debian/cuems-midi-connector/usr/lib/cuems/bin \
+		! -name "cuems-midiconnector" \( -type f -o -type l \) -delete
+	rm -f debian/cuems-midi-connector/usr/lib/cuems/CACHEDIR.TAG
+	find debian/cuems-midi-connector/usr/lib/cuems/lib/python3.11/site-packages \
+		-maxdepth 1 -mindepth 1 ! -name "cuemsmidiconnector" \
+		! -name "cuemsmidiconnector-*.dist-info" -exec rm -rf {} +
 	# Remove __pycache__ from installed tree
 	find debian/cuems-midi-connector -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 	find debian/cuems-midi-connector -name '*.pyc' -delete
